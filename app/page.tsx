@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import FileUpload from '@/components/FileUpload';
 import DataPreview from '@/components/DataPreview';
 import ProcessingStatus from '@/components/ProcessingStatus';
@@ -13,13 +13,34 @@ export default function Home() {
   const [data, setData] = useState<AddressRow[]>([]);
   const [addressColumn, setAddressColumn] = useState<string | null>(null);
   const [processedData, setProcessedData] = useState<AddressRow[]>([]);
-  const [provider, setProvider] = useState<GeocodingProvider>('mapbox');
+  const [provider, setProvider] = useState<GeocodingProvider>('locationiq');
+  const [availableProviders, setAvailableProviders] = useState<GeocodingProvider[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(true);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     isProcessing: false,
     current: 0,
     total: 0,
     errors: [],
   });
+
+  useEffect(() => {
+    async function fetchProviders() {
+      try {
+        const response = await fetch('/api/providers');
+        const data = await response.json();
+        setAvailableProviders(data.providers);
+        // Set default provider to first available (locationiq priority)
+        if (data.providers.length > 0) {
+          setProvider(data.providers[0]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch providers:', error);
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    }
+    fetchProviders();
+  }, []);
 
   const handleFileUpload = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
@@ -123,13 +144,18 @@ export default function Home() {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <ProviderSelector
-            selected={provider}
-            onChange={setProvider}
-            isDisabled={isProcessing}
-          />
+          {isLoadingProviders ? (
+            <div className="mb-4 text-sm text-gray-500">Loading providers...</div>
+          ) : (
+            <ProviderSelector
+              selected={provider}
+              onChange={setProvider}
+              availableProviders={availableProviders}
+              isDisabled={isProcessing}
+            />
+          )}
 
-          <FileUpload onFileUpload={handleFileUpload} isDisabled={isProcessing} />
+          <FileUpload onFileUpload={handleFileUpload} isDisabled={isProcessing || availableProviders.length === 0} />
 
           <DataPreview data={data} addressColumn={addressColumn} />
 
@@ -139,10 +165,10 @@ export default function Home() {
             <div className="mt-6 flex gap-4">
               <button
                 onClick={processAddresses}
-                disabled={isProcessing || !addressColumn}
+                disabled={isProcessing || !addressColumn || availableProviders.length === 0}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors
                   ${
-                    isProcessing || !addressColumn
+                    isProcessing || !addressColumn || availableProviders.length === 0
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
