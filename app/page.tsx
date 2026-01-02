@@ -56,6 +56,9 @@ export default function Home() {
   const processAddresses = useCallback(async () => {
     if (!addressColumn || data.length === 0) return;
 
+    const MAX_RETRIES = 3;
+    const BASE_RETRY_DELAY = 1000;
+
     setProcessingState({
       isProcessing: true,
       current: 0,
@@ -65,32 +68,60 @@ export default function Home() {
 
     const results: AddressRow[] = [];
     const errors: string[] = [];
+    let requestDelay = 550; // Default for LocationIQ
 
     for (let i = 0; i < data.length; i++) {
       const row = { ...data[i] };
       const address = row[addressColumn];
 
       if (address && typeof address === 'string') {
-        try {
-          const response = await fetch('/api/geocode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, provider }),
-          });
+        let success = false;
+        let retryCount = 0;
 
-          const result: GeocodeResult = await response.json();
+        while (!success && retryCount <= MAX_RETRIES) {
+          try {
+            const response = await fetch('/api/geocode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ address, provider }),
+            });
 
-          row.latitude = result.latitude ?? undefined;
-          row.longitude = result.longitude ?? undefined;
-          row.formatted_address = result.formatted_address ?? undefined;
-          row.status = result.error || 'Success';
+            const result = await response.json();
 
-          if (result.error) {
-            errors.push(`Row ${i + 1}: ${result.error}`);
+            // Update request delay from server response
+            if (result._rateLimit?.delay) {
+              requestDelay = result._rateLimit.delay;
+            }
+
+            // Check if rate limited and should retry
+            if (result.retryable && retryCount < MAX_RETRIES) {
+              retryCount++;
+              const retryDelay = BASE_RETRY_DELAY * Math.pow(2, retryCount);
+              console.log(`Rate limited, retrying in ${retryDelay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+              continue;
+            }
+
+            row.latitude = result.latitude ?? undefined;
+            row.longitude = result.longitude ?? undefined;
+            row.formatted_address = result.formatted_address ?? undefined;
+            row.status = result.error || 'Success';
+
+            if (result.error) {
+              errors.push(`Row ${i + 1}: ${result.error}`);
+            }
+            success = true;
+          } catch (error) {
+            if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              const retryDelay = BASE_RETRY_DELAY * Math.pow(2, retryCount);
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+              continue;
+            }
+            row.status = 'Error';
+            errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            success = true; // Exit retry loop
           }
-        } catch (error) {
-          row.status = 'Error';
-          errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       } else {
         row.status = 'No address';
@@ -104,8 +135,8 @@ export default function Home() {
         errors: [...errors],
       }));
 
-      // Rate limiting: wait 100ms between requests
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Rate limiting: use provider-specific delay
+      await new Promise((resolve) => setTimeout(resolve, requestDelay));
     }
 
     setProcessedData(results);
@@ -159,7 +190,7 @@ export default function Home() {
 
           <DataPreview data={data} addressColumn={addressColumn} />
 
-          <ProcessingStatus state={processingState} />
+          <ProcessingStatus state={processingState} provider={provider} />
 
           {hasData && (
             <div className="mt-6 flex gap-4">

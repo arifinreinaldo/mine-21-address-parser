@@ -1,17 +1,35 @@
 'use client';
 
-import { ProcessingState } from '@/types';
+import { ProcessingState, GeocodingProvider } from '@/types';
 
 interface ProcessingStatusProps {
   state: ProcessingState;
+  provider?: GeocodingProvider;
 }
 
-export default function ProcessingStatus({ state }: ProcessingStatusProps) {
+// Estimated time per request in seconds (including delay)
+const TIME_PER_REQUEST: Record<GeocodingProvider, number> = {
+  locationiq: 0.6,  // ~550ms delay + request time
+  mapbox: 0.15,     // ~100ms delay + request time
+};
+
+function formatTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.ceil(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+export default function ProcessingStatus({ state, provider = 'locationiq' }: ProcessingStatusProps) {
   const { isProcessing, current, total, errors } = state;
 
   if (!isProcessing && current === 0) return null;
 
   const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+  const remaining = total - current;
+  const estimatedTimeRemaining = remaining * TIME_PER_REQUEST[provider];
 
   return (
     <div className="mt-6">
@@ -31,6 +49,11 @@ export default function ProcessingStatus({ state }: ProcessingStatusProps) {
           style={{ width: `${percentage}%` }}
         />
       </div>
+      {isProcessing && remaining > 0 && (
+        <p className="mt-1 text-xs text-gray-500">
+          Estimated time remaining: {formatTime(estimatedTimeRemaining)}
+        </p>
+      )}
       {errors.length > 0 && (
         <div className="mt-3">
           <p className="text-sm text-red-600 font-medium">

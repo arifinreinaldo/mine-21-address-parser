@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geocode } from '@/lib/geocoder';
 import { GeocodingProvider } from '@/types';
+import { getRequestDelay } from '@/lib/ratelimit';
 
 export async function POST(request: NextRequest) {
   try {
-    const { address, provider = 'mapbox' } = await request.json();
+    const { address, provider = 'locationiq' } = await request.json();
 
     if (!address) {
       return NextResponse.json(
@@ -23,7 +24,13 @@ export async function POST(request: NextRequest) {
 
     const result = await geocode(address, provider as GeocodingProvider);
 
-    return NextResponse.json(result);
+    // Include rate limit info in response
+    return NextResponse.json({
+      ...result,
+      _rateLimit: {
+        delay: getRequestDelay(provider as GeocodingProvider),
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },

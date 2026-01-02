@@ -5,12 +5,23 @@ const LOCATIONIQ_BASE_URL = 'https://us1.locationiq.com/v1/search';
 export async function geocodeAddress(
   address: string,
   accessToken: string
-): Promise<GeocodeResult> {
+): Promise<GeocodeResult & { retryable?: boolean }> {
   try {
     const encodedAddress = encodeURIComponent(address);
     const url = `${LOCATIONIQ_BASE_URL}?key=${accessToken}&q=${encodedAddress}&countrycodes=id&format=json&limit=1`;
 
     const response = await fetch(url);
+
+    // Handle rate limiting (429) - mark as retryable
+    if (response.status === 429) {
+      return {
+        latitude: null,
+        longitude: null,
+        formatted_address: null,
+        error: 'Rate limit exceeded',
+        retryable: true,
+      };
+    }
 
     if (!response.ok) {
       throw new Error(`LocationIQ API error: ${response.status}`);
