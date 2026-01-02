@@ -12,6 +12,7 @@ export interface GeocodeResult {
   longitude: number | null;
   formatted_address: string | null;
   error?: string;
+  _cached?: boolean;
 }
 
 export interface ProcessingState {

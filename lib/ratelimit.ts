@@ -3,13 +3,15 @@ import { GeocodingProvider } from '@/types';
 // Rate limits per provider (requests per second)
 export const RATE_LIMITS: Record<GeocodingProvider, number> = {
   locationiq: 2,  // Free tier: 2 req/sec, 5000 req/day
-  mapbox: 10,     // Free tier: 100,000 req/month
+  mapbox: 5,      // Free tier: 100,000 req/month - conservative to avoid hitting limits
 };
 
 // Delay between requests in ms (with buffer for safety)
+// Mapbox free tier: 100K requests/month = ~3,333/day = ~139/hour = ~2.3/min
+// Being conservative to spread usage and avoid burst rate limits
 export const REQUEST_DELAYS: Record<GeocodingProvider, number> = {
   locationiq: 550,  // ~1.8 req/sec to stay safe under 2 req/sec
-  mapbox: 100,      // 10 req/sec
+  mapbox: 200,      // 5 req/sec - conservative for free tier sustainability
 };
 
 // Max retries for rate limit errors
